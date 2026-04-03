@@ -1,7 +1,7 @@
 import streamlit as st
 import uuid
 
-from backend import stream_chat, generate_and_save_title
+from backend import stream_chat, generate_and_save_title, Model_List
 from database import init_table, load_chat_titles, load_thread_messages
 
 def init_state():
@@ -14,12 +14,20 @@ def init_state():
     if "titles" not in st.session_state:
         st.session_state.titles=load_chat_titles()
 
+    if "model" not in st.session_state:
+        st.session_state.model=next(iter(Model_List))
+
 def side_bar():
     st.sidebar.title('AI Workspace')
 
     if st.sidebar.button('New Chat'):
         st.session_state.messages=[]
         st.session_state.thread_id=str(uuid.uuid4())
+
+    st.sidebar.selectbox("model",
+        options=list(Model_List.keys()),
+        format_func=lambda key: Model_List[key],
+        key="model")
 
     st.sidebar.header('Chat')
 
@@ -56,13 +64,13 @@ if __name__=='__main__':
         #title
         thread=st.session_state.thread_id
         if thread not in st.session_state.titles:
-            title=generate_and_save_title(thread, user_input)
+            title=generate_and_save_title(thread, user_input, st.session_state.model)
             st.session_state.titles[thread]=title
 
         # assistance
         with st.chat_message('assistant'):
             def stream():
-                for msg, _ in stream_chat(user_input, thread):
+                for msg, _ in stream_chat(user_input, thread, st.session_state.model):
                     if msg.content:
                         yield msg.content
             ai_text=st.write_stream(stream)
