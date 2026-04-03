@@ -1,11 +1,12 @@
-from langgraph.graph import StateGraph, START,  END
 from typing import TypedDict, Annotated
-from langchain_core.messages import BaseMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.sqlite import SqliteSaver
-import sqlite3
+
+from database import list_thread_ids,load_chat_titles,load_thread_messages,save_message, save_title
 
 load_dotenv()
 
@@ -20,21 +21,6 @@ class chat_state(TypedDict):
 def chat_node(state: chat_state):
     return {'message':[chat.invoke(state['message'])]}
 
-def retrieve_all_threads():
-    all_threads = set()
-    for checkpoint in check_pointer.list(None):
-        all_threads.add(checkpoint.config["configurable"]["thread_id"])
-    return list(all_threads)
-
-# memory
-conn = sqlite3.connect(database="chatbot.db", check_same_thread=False)
-conn.execute('''
-    create table if not exists chat_titles(
-             thread_id text primary key, title text
-             )
-''')
-
-
 def generate_title(message):
     prompt=(
         f'''create a short chat title (max 6 words).
@@ -43,18 +29,45 @@ def generate_title(message):
     )
     return chat.invoke(prompt).content.strip().replace('"', '')
 
-def save_title(thread_id,title):
-    conn.execute(
-        "INSERT OR REPLACE INTO chat_titles (thread_id, title) VALUES (?, ?)",
-        (str(thread_id), title)
-    )
-    conn.commit()
+def generate_and_save_title(thread_id, message):
+    title=generate_title(message)
+    save_title(thread_id, title)
+    return title
 
-def load_chat_titles():
-    cur = conn.execute("SELECT thread_id, title FROM chat_titles")
-    return {row[0]: row[1] for row in cur.fetchall()}
+def _to_langchain_messages(messages):
+    chat_history=[]
+    for message in messages:
+        if message["role"] == "assistant":
+            chat_history.append(AIMessage(content=message["content"]))
+        else:
+            chat_history.append(HumanMessage(content=message["content"]))
+    return chat_history
 
-check_pointer = SqliteSaver(conn=conn)
+def _chunk_text(chunk):
+    content=getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts=[]
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+            elif isinstance(item, dict) and item.get("text"):
+                text_parts.append(item["text"])
+        return "".join(text_parts)
+    return str(content)
+
+def stream_chat(user_input, thread_id):
+    save_message(thread_id, "user", user_input)
+    messages=load_thread_messages(thread_id)
+    state={"message": _to_langchain_messages(messages)}
+    result=chatbot.invoke(state, config={"configurable": {"thread_id": str(thread_id)}})
+    ai_message=result["message"][-1]
+    text=_chunk_text(ai_message).strip()
+
+    if text:
+        save_message(thread_id, "assistant", text)
+        yield AIMessage(content=text), None
 
 #graph
 graph=StateGraph(chat_state)
@@ -66,4 +79,4 @@ graph.add_node('node',chat_node)
 graph.add_edge(START,'node')
 graph.add_edge('node',END)
 
-chatbot=graph.compile(checkpointer=check_pointer)
+chatbot=graph.compile()

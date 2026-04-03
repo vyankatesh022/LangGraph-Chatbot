@@ -1,21 +1,21 @@
 import streamlit as st
 import uuid
 
-from backend import stream_chat, generate_and_save_title, load_existing_chat
-from database import init_table, load_chat_titles
+from backend import stream_chat, generate_and_save_title
+from database import init_table, load_chat_titles, load_thread_messages
 
 def init_state():
     if "thread_id" not in st.session_state:
-        st.session_state.thread_id = str(uuid.uuid4())
+        st.session_state.thread_id=str(uuid.uuid4())
 
     if "messages" not in st.session_state:
-        st.session_state.messages = []
+        st.session_state.messages=[]
 
     if "titles" not in st.session_state:
-        st.session_state.titles = load_chat_titles()
+        st.session_state.titles=load_chat_titles()
 
 def side_bar():
-    st.sidebar.title('AI Chat')
+    st.sidebar.title('AI Workspace')
 
     if st.sidebar.button('New Chat'):
         st.session_state.messages=[]
@@ -26,8 +26,8 @@ def side_bar():
     for thread_id in reversed(list(st.session_state.titles.keys())):
         title=st.session_state.titles.get(thread_id, "Untitled Chat")
         if st.sidebar.button(title, key=thread_id):
-            st.session_state.thread_id = thread_id
-            st.session_state.messages = load_existing_chat(thread_id)
+            st.session_state.thread_id=thread_id
+            st.session_state.messages=load_thread_messages(thread_id)
 
 def display_chats():
     for data in st.session_state.messages:
@@ -57,7 +57,7 @@ if __name__=='__main__':
         thread=st.session_state.thread_id
         if thread not in st.session_state.titles:
             title=generate_and_save_title(thread, user_input)
-            st.session_state.titles[thread] = title
+            st.session_state.titles[thread]=title
 
         # assistance
         with st.chat_message('assistant'):
