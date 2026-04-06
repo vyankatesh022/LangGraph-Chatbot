@@ -1,134 +1,95 @@
 # LangGraph-Chatbot
 
-LangGraph-Chatbot is a **Streamlit-based conversational AI application** built using **LangGraph** and **Google Gemini**. It supports **persistent chat memory**, **automatic chat title generation**, and **real-time streaming responses**, all backed by a lightweight **SQLite database**.
+A Streamlit chat app with model selection, MySQL-backed chat history, and PDF RAG for document analysis.
 
----
+## Features
 
-## ✨ Features
+- Gemini and OpenAI model selection
+- chat history stored in MySQL
+- automatic chat title generation
+- assistant modes:
+  - `general`
+  - `all_in_one`
+  - `pdf_analysis`
+- PDF upload and retrieval for the current thread
+- streaming assistant responses in the UI
 
-* 🤖 AI-powered chat using **Google Gemini**
-* 🔁 Conversation flow managed with **LangGraph**
-* 💾 Persistent chat memory using **SQLite**
-* 🏷 Automatic chat title generation
-* 📂 Sidebar chat history with resume support
-* ⚡ Streaming AI responses for better UX
+## Project Structure
 
----
-
-## 🗂 Project Structure
-
-```
+```text
 .
-├── app.py          # Streamlit frontend & session management
-├── backend.py      # LangGraph workflow and AI logic
-├── database.py     # SQLite database helpers
-├── chatbot.db      # Auto-generated SQLite database
+├── app.py
+├── backend.py
+├── database.py
+├── rag.py
 └── README.md
 ```
 
----
+## Files
 
-## 📄 File Descriptions
+- `app.py`: Streamlit UI, sidebar controls, PDF upload, and chat display
+- `backend.py`: model setup, title generation, text chat, PDF chat, and response streaming
+- `database.py`: MySQL connection, table creation, and message/title storage
+- `rag.py`: PDF loading, chunking, embeddings, FAISS storage, and retrieval
 
-### `app.py`
+## Requirements
 
-* Handles the Streamlit UI
-* Manages session state and chat threads
-* Displays chat messages and sidebar history
-* Streams AI responses in real time
+- Python 3.10+
+- MySQL
+- Google API key for Gemini and embeddings
+- OpenAI API key if you want to use the OpenAI option
 
-### `backend.py`
+## Environment Setup
 
-* Defines the LangGraph state machine
-* Configures the Gemini model
-* Generates and stores chat titles
-* Handles message routing and checkpoints
-
-### `database.py`
-
-* Manages SQLite connections
-* Initializes database tables
-* Saves and loads chat titles
-* Provides LangGraph checkpointer support
-
----
-
-## ⚙️ Requirements
-
-* Python **3.10+**
-* Google Gemini API key
-
-### Python Dependencies
-
-```
-streamlit
-langgraph
-langchain-core
-langchain-google-genai
-python-dotenv
-sqlite3
-```
-
----
-
-## 🔐 Environment Setup
-
-Create a `.env` file in the project root directory:
+Create a `.env` file in the project root:
 
 ```env
-GOOGLE_API_KEY=your_google_api_key_here
+GOOGLE_API_KEY=your_google_api_key
+OPENAI_API_KEY=your_openai_api_key
+
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=your_mysql_user
+MYSQL_PASSWORD=your_mysql_password
+MYSQL_DATABASE=langgraph_chatbot
 ```
 
----
+## Install
 
-## ▶️ Running the Application
+```bash
+pip install streamlit python-dotenv mysql-connector-python langchain-core langchain-openai langchain-google-genai langchain-community langchain-text-splitters faiss-cpu pypdf
+```
 
-From the project root:
+## Run
 
 ```bash
 streamlit run app.py
 ```
 
-Then open your browser at:
+Then open:
 
-```
+```text
 http://localhost:8501
 ```
 
----
+## How It Works
 
-## 🧠 How ChatFlow AI Works
+1. A new chat gets a unique `thread_id`.
+2. Messages and titles are saved in MySQL.
+3. You can choose a model and assistant mode from the sidebar.
+4. In `pdf_analysis` mode, upload a PDF for the current thread.
+5. The app chunks the PDF, stores embeddings in FAISS, retrieves relevant chunks, and answers using that context.
 
-1. Each new conversation is assigned a unique `thread_id`
-2. Messages are processed through a LangGraph workflow
-3. Chat history is checkpointed into SQLite
-4. The first user message generates a short chat title
-5. All chats appear in the sidebar and can be resumed anytime
+## PDF RAG Notes
 
----
+- one PDF context is stored per thread
+- uploading a new PDF replaces the old PDF context for that thread
+- FAISS indexes are stored in the system temp directory
+- retrieval is used only in `pdf_analysis` mode
 
-## 🧪 Model Configuration
+## Database Tables
 
-* **Model:** Gemini 2.5 Flash
-* **Temperature:** 0
-* **Max Tokens:** 50
+The app creates these tables automatically:
 
-These settings ensure fast, concise responses.
-
----
-
-## 📌 Notes
-
-* The database file (`chatbot.db`) is created automatically
-* Chat titles are limited to **6 words**
-* Supports multiple chat sessions in a single browser
-
----
-
-## 🚀 Future Enhancements
-
-* User authentication
-* Chat export (PDF / TXT)
-* Multi-model support
-* Improved UI styling
-* Searchable chat history
+- `chat_titles`
+- `chat_messages`

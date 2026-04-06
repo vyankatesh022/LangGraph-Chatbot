@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from database import list_thread_ids,load_chat_titles,load_thread_messages,save_message, save_title
+from rag import load_store, fetch_context
 
 load_dotenv()
 
@@ -14,6 +15,30 @@ chat=None
 Model_List={
     "gemini": "Gemini",
     "openai": "OpenAI",
+}
+
+assistant_mode={
+    "all_in_one": "All-in-One Assistant",
+    "general": "General Assistant",
+    "pdf_analysis": "PDF Analysis"
+}
+
+prompts={
+    "all_in_one": (
+        "You are an expert AI assistant who can act as a general assistant, data analyst, "
+        "data engineer, and machine learning engineer. Choose the most suitable lens for the "
+        "user's request, explain tradeoffs clearly, and use uploaded data only when it is "
+        "explicitly provided in the current turn context."
+    ),
+    "general": (
+        "You are a practical AI copilot. Give clear, correct, concise help and adapt to "
+        "the user's requested depth."
+    ),
+    "pdf_analysis": (
+        "You are an expert AI assistant specialized in analyzing PDF documents. "
+        "Extract key insights, summarize important sections, and adapt your analysis style "
+        "based on the document type while ensuring clarity and accuracy."
+    )
 }
 
 def chat_model(provider='gemini'):
@@ -62,17 +87,45 @@ def _chunk_text(chunk):
         return "".join(text_parts)
     return str(content)
 
-def stream_chat(user_input, thread_id, provider='gemini'):
+def _pdf_chat(message, thread_id):
+    query=''
+
+    for m in reversed(message):
+        if m['role']=='user':
+            query=m['content']
+            break
+    
+    store=load_store(thread_id)
+    context=fetch_context(query, store) if store else ''
+
+    if context:
+        pdf_message=(
+            "Use the uploaded PDF content when helpful. "
+            "If the answer is not in the PDF, clearly say that.\n\n"
+            f"{context}")
+    else:
+        pdf_message="No PDF uploaded yet. Ask the user to upload one if needed."
+
+    response=chat.invoke([SystemMessage(content=prompts['pdf_analysis']),
+            SystemMessage(content=pdf_message),
+            *_to_langchain_messages(message)])
+    
+    return _chunk_text(response).strip()
+
+def _text_chat(message, mode):
+    prompt=prompts.get(mode, prompts['general'])
+    response=chat.invoke([SystemMessage(content=prompt),*_to_langchain_messages(message),])
+    return _chunk_text(response).strip()
+
+def stream_chat(user_input, thread_id, provider='gemini', assistant_mode='general'):
     chat_model(provider)
     save_message(thread_id, "user", user_input)
-    messages=load_thread_messages(thread_id)
-    state={"message": _to_langchain_messages(messages)}
-    ai_message=chat.invoke(state["message"])
-    text=_chunk_text(ai_message).strip()
-
-    if text:
-        save_message(thread_id, "assistant", text)
-        yield AIMessage(content=text), None
+    message=load_thread_messages(thread_id)
+    mode= assistant_mode if isinstance(assistant_mode, str) else 'general'
+    text=_pdf_chat(message, thread_id) if mode=='pdf_analysis' else _text_chat(message, mode)
+    
+    save_message(thread_id, "assistant", text)
+    yield AIMessage(content=text), None
 
 #graph
 graph=StateGraph(chat_state)
